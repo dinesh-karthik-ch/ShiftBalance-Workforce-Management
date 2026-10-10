@@ -1,0 +1,211 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShiftBalance | Workforce Management</title>
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <nav class="navbar navbar-dark bg-dark px-4 py-3">
+        <a class="navbar-brand fw-bold" href="#">ShiftBalance</a>
+        <span class="text-light">Workforce Management</span>
+    </nav>
+
+    <main class="container py-4">
+        <div class="mb-4">
+            <h1 class="fw-bold">Manager Dashboard</h1>
+            <p class="text-secondary">
+                Manage your employees and their availability.
+            </p>
+            <div id="message" class="alert d-none" role="alert"></div>
+        </div>
+
+        <section class="card shadow-sm mb-4">
+            <div class="card-header fw-bold">Add Employee</div>
+            <div class="card-body">
+                <form id="employeeForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="employeeName" class="form-label">
+                                Full Name
+                            </label>
+                            <input
+                                id="employeeName"
+                                class="form-control"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="employeeEmail" class="form-label">
+                                Email
+                            </label>
+                            <input
+                                id="employeeEmail"
+                                type="email"
+                                class="form-control"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="employeeRole" class="form-label">
+                                Role
+                            </label>
+                            <select id="employeeRole" class="form-select">
+                                <option value="employee">Employee</option>
+                                <option value="manager">Manager</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="department" class="form-label">
+                                Department
+                            </label>
+                            <input
+                                id="department"
+                                class="form-control"
+                                value="Operations"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-12">
+                            <button class="btn btn-primary" type="submit">
+                                Add Employee
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <section class="card shadow-sm mb-4">
+            <div class="card-header fw-bold">Employee Directory</div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Department</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employeeTable">
+                            <tr>
+                                <td colspan="4" class="text-secondary">
+                                    Loading employees...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="card shadow-sm mb-4">
+            <div class="card-header fw-bold">Submit Availability</div>
+            <div class="card-body">
+                <form id="availabilityForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="availabilityEmployee"
+                                   class="form-label">
+                                Employee
+                            </label>
+                            <select
+                                id="availabilityEmployee"
+                                class="form-select"
+                                required
+                            >
+                                <option value="">Select an employee</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="day" class="form-label">Day</label>
+                            <select id="day" class="form-select" required>
+                                <option value="">Select a day</option>
+                                <option>Monday</option>
+                                <option>Tuesday</option>
+                                <option>Wednesday</option>
+                                <option>Thursday</option>
+                                <option>Friday</option>
+                                <option>Saturday</option>
+                                <option>Sunday</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="startTime" class="form-label">
+                                Available From
+                            </label>
+                            <input
+                                id="startTime"
+                                type="time"
+                                class="form-control"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="endTime" class="form-label">
+                                Available Until
+                            </label>
+                            <input
+                                id="endTime"
+                                type="time"
+                                class="form-control"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-12">
+                            <button class="btn btn-success" type="submit">
+                                Save Availability
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <section class="card shadow-sm mb-4">
+            <div class="card-header fw-bold">Employee Availability</div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>Employee</th>
+                                <th>Day</th>
+                                <th>From</th>
+                                <th>Until</th>
+                            </tr>
+                        </thead>
+                        <tbody id="availabilityTable">
+                            <tr>
+                                <td colspan="4" class="text-secondary">
+                                    Loading availability...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
