@@ -133,6 +133,7 @@ function App() {
 
   const [employees, setEmployees] = useState([]);
   const [availability, setAvailability] = useState([]);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
 
@@ -140,6 +141,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [employeeForm, setEmployeeForm] = useState(emptyEmployee);
+  const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [availabilityForm, setAvailabilityForm] =
     useState(emptyAvailability);
 
@@ -166,6 +168,20 @@ function App() {
     }
   }
 
+  async function viewEmployeeProfile(employeeId) {
+  try {
+    setMessage(null);
+
+    const employee = await apiRequest(
+      `/employees/${employeeId}`
+    );
+
+    setSelectedEmployee(employee);
+  } catch (error) {
+    notify("error", error.message);
+  }
+}
+
   useEffect(() => {
     loadData();
   }, []);
@@ -174,20 +190,36 @@ function App() {
     setMessage({ type, text });
   }
 
+  
   async function handleAddEmployee(event) {
     event.preventDefault();
     setSavingEmployee(true);
     setMessage(null);
 
+    const isEditing = Boolean(editingEmployeeId);
+
     try {
-      await apiRequest("/employees", {
-        method: "POST",
-        body: JSON.stringify(employeeForm),
-      });
+      await apiRequest(
+        isEditing
+          ? `/employees/${editingEmployeeId}`
+          : "/employees",
+        {
+          method: isEditing ? "PUT" : "POST",
+          body: JSON.stringify(employeeForm),
+        }
+      );
 
       setEmployeeForm(emptyEmployee);
+      setEditingEmployeeId(null);
+
       await loadData();
-      notify("success", "Employee added successfully.");
+
+      notify(
+        "success",
+        isEditing
+          ? "Employee updated successfully."
+          : "Employee added successfully."
+      );
     } catch (error) {
       notify("error", error.message);
     } finally {
@@ -214,6 +246,20 @@ function App() {
     } finally {
       setSavingAvailability(false);
     }
+  }
+
+  function startEditEmployee(employee) {
+    setEditingEmployeeId(employee._id);
+
+    setEmployeeForm({
+      name: employee.name || "",
+      email: employee.email || "",
+      role: employee.role || "employee",
+      department: employee.department || "General",
+    });
+
+    setMessage(null);
+    setActivePage("employees");
   }
 
   const filteredEmployees = employees.filter((employee) =>
@@ -282,6 +328,7 @@ function App() {
               <th className="px-5 py-3 font-semibold">Employee</th>
               <th className="px-5 py-3 font-semibold">Department</th>
               <th className="px-5 py-3 font-semibold">Role</th>
+              <th className="px-5 py-3 font-semibold">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -310,6 +357,25 @@ function App() {
                     {employee.role}
                   </span>
                 </td>
+
+                <td className="px-5 py-4">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => startEditEmployee(employee)}
+                      className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      onClick={() => viewEmployeeProfile(employee._id)}
+                      className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                    >
+                      View Profile
+                    </button>
+                  </div>
+                </td>
+
               </tr>
             ))}
           </tbody>
@@ -358,10 +424,15 @@ function App() {
   function EmployeeForm() {
     return (
       <Panel className="p-5 sm:p-6">
-        <SectionHeading
-          title="Add employee"
-          subtitle="Add a new member to your workforce."
-        />
+
+      <SectionHeading
+        title={editingEmployeeId ? "Edit employee" : "Add employee"}
+        subtitle={
+          editingEmployeeId
+            ? "Update this employee's information."
+            : "Add a new member to your workforce."
+        }
+      />
 
         <form onSubmit={handleAddEmployee} className="space-y-4">
           <div>
@@ -449,8 +520,28 @@ function App() {
             ) : (
               <Plus size={17} />
             )}
-            {savingEmployee ? "Saving employee..." : "Add employee"}
+
+            {savingEmployee
+              ? "Saving..."
+              : editingEmployeeId
+                ? "Save changes"
+                : "Add employee"}
           </button>
+
+          {editingEmployeeId && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingEmployeeId(null);
+                setEmployeeForm(emptyEmployee);
+                setMessage(null);
+              }}
+              className="ml-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          )}
+          
         </form>
       </Panel>
     );
@@ -764,6 +855,122 @@ function App() {
               >
                 <X size={16} />
               </button>
+            </div>
+          )}
+
+          {selectedEmployee && (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center
+                bg-slate-950/50 p-4 backdrop-blur-sm"
+              onClick={() => setSelectedEmployee(null)}
+            >
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="profile-title"
+                className="w-full max-w-lg overflow-hidden rounded-2xl
+                  border border-slate-200 bg-white shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between
+                  border-b border-slate-100 p-6">
+                  <div>
+                    <p className="text-xs font-semibold uppercase
+                      tracking-wider text-indigo-600">
+                      Employee Profile
+                    </p>
+                    <h2
+                      id="profile-title"
+                      className="mt-1 text-xl font-bold text-slate-900"
+                    >
+                      Employee details
+                    </h2>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEmployee(null)}
+                    aria-label="Close employee profile"
+                    className="rounded-lg p-2 text-slate-500
+                      transition hover:bg-slate-100 hover:text-slate-900"
+                  >
+                    <X size={19} />
+                  </button>
+                </div>
+
+                <div className="p-6">
+                  <div className="mb-6 flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center
+                      justify-center rounded-2xl bg-indigo-100
+                      text-xl font-bold text-indigo-700">
+                      {(selectedEmployee.name || "?")
+                        .charAt(0)
+                        .toUpperCase()}
+                    </div>
+
+                    <div className="min-w-0">
+                      <h3 className="truncate text-lg font-bold
+                        text-slate-900">
+                        {selectedEmployee.name}
+                      </h3>
+                      <p className="truncate text-sm text-slate-500">
+                        {selectedEmployee.email}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-slate-100
+                    rounded-xl border border-slate-200 px-4">
+                    <div className="flex items-center justify-between gap-4 py-4">
+                      <span className="text-sm text-slate-500">Role</span>
+                      <span className="rounded-full bg-indigo-50
+                        px-3 py-1 text-xs font-semibold capitalize
+                        text-indigo-700">
+                        {selectedEmployee.role}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 py-4">
+                      <span className="text-sm text-slate-500">Department</span>
+                      <span className="text-sm font-semibold text-slate-800">
+                        {selectedEmployee.department || "General"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 py-4">
+                      <span className="text-sm text-slate-500">Employee ID</span>
+                      <span className="max-w-[60%] break-all text-right
+                        font-mono text-xs text-slate-600">
+                        {selectedEmployee._id}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 py-4">
+                      <span className="text-sm text-slate-500">Joined</span>
+                      <span className="text-sm font-medium text-slate-700">
+                        {selectedEmployee.createdAt
+                          ? new Date(
+                              selectedEmployee.createdAt
+                            ).toLocaleDateString()
+                          : "Not available"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end border-t border-slate-100
+                  bg-slate-50 px-6 py-4">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEmployee(null)}
+                    className="rounded-xl bg-slate-900 px-4 py-2.5
+                      text-sm font-semibold text-white transition
+                      hover:bg-slate-700"
+                  >
+                    Close profile
+                  </button>
+                </div>
+              </section>
             </div>
           )}
 

@@ -28,6 +28,127 @@ app.get("/api/employees", async (req, res) => {
     }
 });
 
+
+app.get("/api/employees/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({
+                message: "Invalid employee ID."
+            });
+        }
+
+        const employee = await Employee.findById(id);
+
+        if (!employee) {
+            return res.status(404).json({
+                message: "Employee not found."
+            });
+        }
+
+        res.status(200).json(employee);
+
+    } catch (error) {
+        console.error("Error fetching employee:", error.message);
+
+        res.status(500).json({
+            message: "Failed to retrieve employee."
+        });
+    }
+});
+
+
+app.put("/api/employees/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({
+                message: "Invalid employee ID."
+            });
+        }
+
+        const { name, email, role, department } = req.body;
+        const updates = {};
+
+        if (name !== undefined) {
+            if (typeof name !== "string" || !name.trim()) {
+                return res.status(400).json({
+                    message: "Name cannot be empty."
+                });
+            }
+            updates.name = name.trim();
+        }
+
+        if (email !== undefined) {
+            if (typeof email !== "string" || !email.trim()) {
+                return res.status(400).json({
+                    message: "Email cannot be empty."
+                });
+            }
+            updates.email = email.trim().toLowerCase();
+        }
+
+        if (role !== undefined) {
+            if (!["employee", "manager"].includes(role)) {
+                return res.status(400).json({
+                    message: "Role must be employee or manager."
+                });
+            }
+            updates.role = role;
+        }
+
+        if (department !== undefined) {
+            if (typeof department !== "string" || !department.trim()) {
+                return res.status(400).json({
+                    message: "Department cannot be empty."
+                });
+            }
+            updates.department = department.trim();
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({
+                message: "Provide at least one field to update."
+            });
+        }
+
+        const employee = await Employee.findByIdAndUpdate(
+            id,
+            { $set: updates },
+            { new: true, runValidators: true }
+        );
+
+        if (!employee) {
+            return res.status(404).json({
+                message: "Employee not found."
+            });
+        }
+
+        res.status(200).json(employee);
+
+    } catch (error) {
+        if (error.code === 11000) {
+            return res.status(409).json({
+                message: "An employee with this email already exists."
+            });
+        }
+
+        if (error.name === "ValidationError") {
+            return res.status(400).json({
+                message: error.message
+            });
+        }
+
+        console.error("Error updating employee:", error.message);
+
+        res.status(500).json({
+            message: "Failed to update employee."
+        });
+    }
+});
+
 // POST: Add an employee
 app.post("/api/employees", async (req, res) => {
     try {
