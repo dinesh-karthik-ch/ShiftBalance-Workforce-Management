@@ -19,6 +19,9 @@ import {
   LoaderCircle,
   BriefcaseBusiness,
   Sparkles,
+  Power,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 
 const API_URL = "http://localhost:5000/api";
@@ -219,6 +222,63 @@ function App() {
     }
   }
 
+  async function handleToggleEmployeeStatus(employee) {
+    const currentlyActive = employee.isActive !== false;
+    const nextIsActive = !currentlyActive;
+    const confirmation = nextIsActive
+      ? `Reactivate ${employee.name}? Their existing availability will need review before scheduling.`
+      : `Deactivate ${employee.name}? Their employee record and availability will be retained, and existing availability will be flagged for review.`;
+
+    if (!window.confirm(confirmation)) return;
+
+    try {
+      const result = await apiRequest(`/employees/${employee._id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: nextIsActive }),
+      });
+
+      setSelectedEmployee((current) =>
+        current && current._id === employee._id ? result.employee : current
+      );
+      if (!nextIsActive && availabilityForm.employeeId === employee._id) {
+        setEditingAvailabilityId(null);
+        setAvailabilityForm(emptyAvailability);
+      }
+      await loadData();
+      notify(
+        "success",
+        nextIsActive
+          ? "Employee reactivated. Review their existing availability before scheduling."
+          : "Employee deactivated. Existing availability was retained and flagged for review."
+      );
+    } catch (error) {
+      notify("error", error.message);
+    }
+  }
+
+  async function handleDeleteAvailability(record) {
+    const employeeName = record.employee?.name || "this employee";
+    const confirmed = window.confirm(
+      `Delete ${employeeName}'s ${record.day} availability (${record.startTime}–${record.endTime})? This removes only this availability slot.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await apiRequest(`/availability/${record._id}`, { method: "DELETE" });
+
+      if (editingAvailabilityId === record._id) {
+        setEditingAvailabilityId(null);
+        setAvailabilityForm(emptyAvailability);
+      }
+
+      await loadData();
+      notify("success", "Availability slot deleted successfully.");
+    } catch (error) {
+      notify("error", error.message);
+    }
+  }
+
   async function handleAddAvailability(event) {
     event.preventDefault();
     setSavingAvailability(true);
@@ -277,6 +337,9 @@ function App() {
     employees.map((employee) => employee.department).filter(Boolean)
   ).size;
 
+  // Older employee documents without isActive are treated as active.
+  const activeEmployees = employees.filter((employee) => employee.isActive !== false);
+
   const pageInfo = {
     overview: {
       title: "Overview",
@@ -320,54 +383,71 @@ function App() {
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+          <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 dark:bg-slate-900 dark:text-slate-400">
             <tr>
               <th className="px-5 py-3 font-semibold">Employee</th>
               <th className="px-5 py-3 font-semibold">Department</th>
               <th className="px-5 py-3 font-semibold">Role</th>
-              <th className="px-5 py-3 font-semibold">Action</th>
+              <th className="px-5 py-3 font-semibold">Status</th>
+              <th className="px-5 py-3 font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredEmployees.map((employee) => (
-              <tr key={employee._id} className="transition hover:bg-slate-50/80">
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 font-bold text-indigo-700">
-                      {(employee.name || "?").charAt(0).toUpperCase()}
+            {filteredEmployees.map((employee) => {
+              const isActive = employee.isActive !== false;
+              return (
+                <tr key={employee._id} className={`transition hover:bg-slate-50/80 dark:hover:bg-slate-800/60 ${isActive ? "" : "opacity-80"}`}>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                        {(employee.name || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-800 dark:text-slate-100">{employee.name}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{employee.email}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-semibold text-slate-800">{employee.name}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">{employee.email}</p>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{employee.department || "General"}</td>
+                  <td className="px-5 py-4">
+                    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold capitalize text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      {employee.role}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${isActive ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
+                      {isActive ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex min-w-[180px] flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startEditEmployee(employee)}
+                        className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => viewEmployeeProfile(employee._id)}
+                        className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-300 dark:hover:bg-indigo-900"
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleEmployeeStatus(employee)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${isActive ? "bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300 dark:hover:bg-rose-900" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"}`}
+                      >
+                        {isActive ? <Power size={14} /> : <RotateCcw size={14} />}
+                        {isActive ? "Deactivate" : "Reactivate"}
+                      </button>
                     </div>
-                  </div>
-                </td>
-                <td className="px-5 py-4 text-slate-600">{employee.department || "General"}</td>
-                <td className="px-5 py-4">
-                  <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold capitalize text-slate-600">
-                    {employee.role}
-                  </span>
-                </td>
-                <td className="px-5 py-4">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => startEditEmployee(employee)}
-                      className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => viewEmployeeProfile(employee._id)}
-                      className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                    >
-                      View Profile
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -390,22 +470,53 @@ function App() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {availability.map((record) => (
-              <tr key={record._id} className="transition hover:bg-slate-50/80">
-                <td className="px-5 py-4 font-medium text-slate-800">{record.employee?.name || "Employee"}</td>
-                <td className="px-5 py-4 text-slate-600">{record.day}</td>
-                <td className="px-5 py-4 text-slate-600">{record.startTime} – {record.endTime}</td>
-                <td className="px-5 py-4">
-                  <button
-                    type="button"
-                    onClick={() => handleEditAvailability(record)}
-                    className="rounded-lg border border-indigo-200 px-3 py-1.5 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50"
-                  >
-                    Edit
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {availability.map((record) => {
+              const employeeIsActive = record.employee?.isActive !== false;
+              return (
+                <tr key={record._id} className="transition hover:bg-slate-50/80 dark:hover:bg-slate-800/60">
+                  <td className="px-5 py-4 font-medium text-slate-800 dark:text-slate-100">
+                    <div>{record.employee?.name || "Employee"}</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {!employeeIsActive && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          Employee inactive
+                        </span>
+                      )}
+                      {record.needsReview && (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                          Review required
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{record.day}</td>
+                  <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{record.startTime} – {record.endTime}</td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleEditAvailability(record)}
+                        disabled={!employeeIsActive}
+                        title={!employeeIsActive ? "Reactivate this employee before editing their availability" : "Edit availability"}
+                        className="rounded-lg border border-indigo-200 px-3 py-1.5 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950"
+                      >
+                        {record.needsReview ? "Review & Edit" : "Edit"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAvailability(record)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950"
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </div>
+                    {!employeeIsActive && (
+                      <p className="mt-1.5 max-w-[230px] text-xs text-slate-500">Reactivate the employee before reviewing this slot.</p>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -506,9 +617,9 @@ function App() {
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             >
               <option value="">Choose an employee</option>
-              {employees.map((employee) => <option key={employee._id} value={employee._id}>{employee.name}</option>)}
+              {activeEmployees.map((employee) => <option key={employee._id} value={employee._id}>{employee.name}</option>)}
             </select>
-            {employees.length === 0 && <p className="mt-1.5 text-xs text-amber-600">Add an employee before submitting availability.</p>}
+            {activeEmployees.length === 0 && <p className="mt-1.5 text-xs text-amber-600">Activate an employee before submitting availability.</p>}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Day of the week</label>
@@ -546,7 +657,7 @@ function App() {
           </div>
           <button
             type="submit"
-            disabled={savingAvailability || employees.length === 0}
+            disabled={savingAvailability || activeEmployees.length === 0}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {savingAvailability ? <LoaderCircle size={17} className="animate-spin" /> : <CalendarCheck size={17} />}
@@ -713,6 +824,12 @@ function App() {
                       <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold capitalize text-indigo-700">{selectedEmployee.role}</span>
                     </div>
                     <div className="flex items-center justify-between gap-4 py-4">
+                      <span className="text-sm text-slate-500">Status</span>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${selectedEmployee.isActive === false ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}>
+                        {selectedEmployee.isActive === false ? "Inactive" : "Active"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 py-4">
                       <span className="text-sm text-slate-500">Department</span>
                       <span className="text-sm font-semibold text-slate-800">{selectedEmployee.department || "General"}</span>
                     </div>
@@ -790,8 +907,8 @@ function App() {
                         {availability.slice(0, 5).map((record) => (
                           <div key={record._id} className="flex items-center gap-3 px-5 py-4 sm:px-6">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><CalendarCheck size={19} /></div>
-                            <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{record.employee?.name || "Employee"}</p><p className="mt-0.5 text-xs text-slate-500">{record.day}</p></div>
-                            <span className="whitespace-nowrap rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600">{record.startTime} – {record.endTime}</span>
+                            <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{record.employee?.name || "Employee"}</p><p className="mt-0.5 text-xs text-slate-500">{record.day}</p>{record.needsReview && <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-300">Review required</p>}</div>
+                            <span className="whitespace-nowrap rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{record.startTime} – {record.endTime}</span>
                           </div>
                         ))}
                       </div>
