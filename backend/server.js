@@ -291,6 +291,110 @@ app.post("/api/availability", async (req, res) => {
     }
 });
 
+// PUT: Update existing employee availability
+app.put("/api/availability/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { employeeId, day, startTime, endTime } = req.body;
+
+        const validDays = [
+            "Monday", "Tuesday", "Wednesday", "Thursday",
+            "Friday", "Saturday", "Sunday"
+        ];
+
+        // Validate availability record ID
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({
+                message: "Invalid availability ID."
+            });
+        }
+
+        // Validate required fields
+        if (!employeeId || !day || !startTime || !endTime) {
+            return res.status(400).json({
+                message: "All fields are required."
+            });
+        }
+
+        // Validate employee ID
+        if (!mongoose.isValidObjectId(employeeId)) {
+            return res.status(400).json({
+                message: "Invalid employee ID."
+            });
+        }
+
+        // Validate day
+        if (!validDays.includes(day)) {
+            return res.status(400).json({
+                message: "Invalid day."
+            });
+        }
+
+        // Validate time range
+        if (
+            !validTime(startTime) ||
+            !validTime(endTime) ||
+            startTime >= endTime
+        ) {
+            return res.status(400).json({
+                message:
+                    "Enter valid times in HH:mm format; end time must be later than start time."
+            });
+        }
+
+        // Check whether the availability record exists
+        const existingRecord = await Availability.findById(id);
+
+        if (!existingRecord) {
+            return res.status(404).json({
+                message: "Availability record not found."
+            });
+        }
+
+        // Check whether the employee exists
+        const employee = await Employee.findById(employeeId);
+
+        if (!employee) {
+            return res.status(404).json({
+                message: "Employee not found."
+            });
+        }
+
+        // Update the availability record
+        const updatedRecord = await Availability.findByIdAndUpdate(
+            id,
+            {
+                employee: employeeId,
+                day,
+                startTime,
+                endTime
+            },
+            {
+                new: true,
+                runValidators: true
+            }
+        );
+
+        return res.status(200).json({
+            message: "Availability updated successfully.",
+            availability: updatedRecord
+        });
+    } catch (error) {
+        if (error.code === 11000) {
+            return res.status(409).json({
+                message:
+                    "Availability for this employee and day already exists."
+            });
+        }
+
+        console.error("Update availability error:", error);
+
+        return res.status(500).json({
+            message: "Failed to update availability."
+        });
+    }
+});
+
 // Start server after MongoDB connects
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
