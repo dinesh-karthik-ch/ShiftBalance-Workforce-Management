@@ -22,6 +22,9 @@ import {
   Power,
   RotateCcw,
   Trash2,
+  ClipboardList,
+  LogOut,
+  LockKeyhole,
 } from "lucide-react";
 
 const API_URL = "http://localhost:5000/api";
@@ -30,6 +33,7 @@ const navItems = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "employees", label: "Employees", icon: Users },
   { id: "availability", label: "Availability", icon: CalendarCheck },
+  { id: "leave", label: "Leave Management", icon: ClipboardList },
   { id: "schedule", label: "Shift Schedule", icon: CalendarDays },
   { id: "conflicts", label: "Conflicts", icon: AlertTriangle },
 ];
@@ -48,21 +52,30 @@ const emptyAvailability = {
   endTime: "17:00",
 };
 
+function getInitials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "U";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
 async function apiRequest(endpoint, options = {}) {
+  const token = localStorage.getItem("shiftbalance-token");
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });
 
   const data = await response.json().catch(() => null);
-
   if (!response.ok) {
-    throw new Error(data?.message || `Request failed (${response.status})`);
+    const error = new Error(data?.message || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
-
   return data;
 }
 
@@ -133,7 +146,13 @@ function App() {
 
   const [employees, setEmployees] = useState([]);
   const [availability, setAvailability] = useState([]);
+  const [leaveRequests, setLeaveRequests] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
 
@@ -147,25 +166,37 @@ function App() {
 
   const [savingEmployee, setSavingEmployee] = useState(false);
   const [savingAvailability, setSavingAvailability] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({ startDate: "", endDate: "", reason: "" });
+  const [savingLeave, setSavingLeave] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(
     () => localStorage.getItem("shiftbalance-theme") === "dark"
   );
 
-  async function loadData() {
+  async function loadData(user = currentUser) {
+    if (!user) return;
     setLoading(true);
 
     try {
-      const [employeeData, availabilityData] = await Promise.all([
-        apiRequest("/employees"),
-        apiRequest("/availability"),
+      const isManager = user.role === "manager";
+      const [employeeData, availabilityData, leaveData] = await Promise.all([
+        isManager ? apiRequest("/employees") : Promise.resolve([user]),
+        apiRequest(isManager ? "/availability" : `/availability?employeeId=${user._id}`),
+        apiRequest("/leave"),
       ]);
 
       setEmployees(employeeData);
       setAvailability(availabilityData);
+      setLeaveRequests(leaveData);
       setConnected(true);
     } catch (error) {
       setConnected(false);
-      setMessage({ type: "error", text: error.message });
+      if (error.status === 401 || error.status === 403) {
+        localStorage.removeItem("shiftbalance-token");
+        setCurrentUser(null);
+        setAuthError(error.message);
+      } else {
+        setMessage({ type: "error", text: error.message });
+      }
     } finally {
       setLoading(false);
     }
@@ -186,7 +217,31 @@ function App() {
   }
 
   useEffect(() => {
-    loadData();
+    let cancelled = false;
+    const token = localStorage.getItem("shiftbalance-token");
+    if (!token) {
+      setAuthChecking(false);
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    apiRequest("/auth/me")
+      .then(async (user) => {
+        if (cancelled) return;
+        setCurrentUser(user);
+        await loadData(user);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        localStorage.removeItem("shiftbalance-token");
+        setAuthError(error.message);
+        setLoading(false);
+      })
+      .finally(() => {
+        if (!cancelled) setAuthChecking(false);
+      });
+
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -194,6 +249,79 @@ function App() {
     document.documentElement.style.colorScheme = isDarkMode ? "dark" : "light";
     localStorage.setItem("shiftbalance-theme", isDarkMode ? "dark" : "light");
   }, [isDarkMode]);
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      const result = await apiRequest("/auth/login", {
+        method: "POST",
+        body: JSON.stringify(loginForm),
+      });
+      localStorage.setItem("shiftbalance-token", result.token);
+      setCurrentUser(result.user);
+      setActivePage("overview");
+      setLoginForm({ email: "", password: "" });
+      await loadData(result.user);
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setAuthLoading(false);
+      setAuthChecking(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await apiRequest("/auth/logout", { method: "POST" });
+    } catch (_error) {
+      // Clear local credentials even if the network is offline.
+    }
+    localStorage.removeItem("shiftbalance-token");
+    setCurrentUser(null);
+    setEmployees([]);
+    setAvailability([]);
+    setLeaveRequests([]);
+    setSelectedEmployee(null);
+    setActivePage("overview");
+    setMessage(null);
+    setAuthError("");
+  }
+
+  async function handleSubmitLeave(event) {
+    event.preventDefault();
+    setSavingLeave(true);
+    setMessage(null);
+    try {
+      await apiRequest("/leave", {
+        method: "POST",
+        body: JSON.stringify(leaveForm),
+      });
+      setLeaveForm({ startDate: "", endDate: "", reason: "" });
+      await loadData(currentUser);
+      notify("success", "Leave request submitted successfully.");
+    } catch (error) {
+      notify("error", error.message);
+    } finally {
+      setSavingLeave(false);
+    }
+  }
+
+  async function handleLeaveDecision(leaveRequest, status) {
+    const employeeName = leaveRequest.employee?.name || "this employee";
+    if (!window.confirm(`${status === "approved" ? "Approve" : "Reject"} ${employeeName}'s leave request?`)) return;
+    try {
+      await apiRequest(`/leave/${leaveRequest._id}/decision`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, managerNote: "" }),
+      });
+      await loadData(currentUser);
+      notify("success", `Leave request ${status}.`);
+    } catch (error) {
+      notify("error", error.message);
+    }
+  }
 
   async function handleAddEmployee(event) {
     event.preventDefault();
@@ -350,8 +478,12 @@ function App() {
       description: "Manage your team and employee records.",
     },
     availability: {
-      title: "Availability",
-      description: "Track when your employees are available to work.",
+      title: currentUser?.role === "employee" ? "My Availability" : "Availability",
+      description: currentUser?.role === "employee" ? "Manage your available working hours." : "Track when your employees are available to work.",
+    },
+    leave: {
+      title: currentUser?.role === "manager" ? "Leave Management" : "My Leave",
+      description: currentUser?.role === "manager" ? "Review employee leave requests and submit your own." : "Request leave and track its approval status.",
     },
     schedule: {
       title: "Shift Schedule",
@@ -363,13 +495,20 @@ function App() {
     },
   }[activePage];
 
+  const visibleNavItems = currentUser?.role === "manager"
+    ? navItems
+    : navItems.filter((item) => ["overview", "availability", "leave"].includes(item.id));
+
   function navigateTo(page) {
+    if (currentUser?.role !== "manager" && ["employees", "schedule", "conflicts"].includes(page)) {
+      page = "overview";
+    }
     setActivePage(page);
     setMobileMenuOpen(false);
     setMessage(null);
   }
 
-  function EmployeeTable() {
+  function renderEmployeeTable() {
     if (loading) return <EmptyState message="Loading employee records..." />;
 
     if (filteredEmployees.length === 0) {
@@ -438,7 +577,7 @@ function App() {
                       <button
                         type="button"
                         onClick={() => handleToggleEmployeeStatus(employee)}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${isActive ? "bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300 dark:hover:bg-rose-900" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"}`}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 ${isActive ? "bg-rose-50 text-rose-700 hover:bg-rose-100 hover:shadow-rose-500/25 focus-visible:ring-rose-500 dark:bg-rose-950 dark:text-rose-300 dark:hover:bg-rose-900 dark:hover:shadow-rose-400/20" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:shadow-emerald-500/35 focus-visible:ring-emerald-500 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900 dark:hover:shadow-emerald-400/25"}`}
                       >
                         {isActive ? <Power size={14} /> : <RotateCcw size={14} />}
                         {isActive ? "Deactivate" : "Reactivate"}
@@ -454,7 +593,7 @@ function App() {
     );
   }
 
-  function AvailabilityTable() {
+  function renderAvailabilityTable() {
     if (loading) return <EmptyState message="Loading availability records..." />;
     if (availability.length === 0) return <EmptyState message="No availability records yet." />;
 
@@ -523,7 +662,7 @@ function App() {
     );
   }
 
-  function EmployeeForm() {
+  function renderEmployeeForm() {
     return (
       <Panel className="p-5 sm:p-6">
         <SectionHeading
@@ -600,7 +739,7 @@ function App() {
     );
   }
 
-  function AvailabilityForm() {
+  function renderAvailabilityForm() {
     return (
       <Panel className="p-5 sm:p-6">
         <SectionHeading
@@ -681,8 +820,162 @@ function App() {
     );
   }
 
+  function renderLeaveTable() {
+    if (loading) return <EmptyState message="Loading leave requests..." />;
+    if (leaveRequests.length === 0) return <EmptyState message="No leave requests yet." />;
+
+    const formatDate = (value) => new Date(value).toLocaleDateString(undefined, {
+      year: "numeric", month: "short", day: "numeric", timeZone: "UTC",
+    });
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+            <tr>
+              {currentUser.role === "manager" && <th className="px-5 py-3 font-semibold">Employee</th>}
+              <th className="px-5 py-3 font-semibold">Dates</th>
+              <th className="px-5 py-3 font-semibold">Reason</th>
+              <th className="px-5 py-3 font-semibold">Status</th>
+              <th className="px-5 py-3 font-semibold">Decision / actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            {leaveRequests.map((request) => (
+              <tr key={request._id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60">
+                {currentUser.role === "manager" && (
+                  <td className="px-5 py-4">
+                    <p className="font-semibold text-slate-800 dark:text-slate-100">{request.employee?.name || "Employee"}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{request.employee?.email || ""}</p>
+                  </td>
+                )}
+                <td className="whitespace-nowrap px-5 py-4 text-slate-600 dark:text-slate-300">
+                  <div>{formatDate(request.startDate)}</div>
+                  <div className="mt-1 text-xs text-slate-500">to {formatDate(request.endDate)}</div>
+                </td>
+                <td className="max-w-xs px-5 py-4 text-slate-600 dark:text-slate-300">
+                  <p className="whitespace-pre-wrap">{request.reason}</p>
+                  {request.managerNote && <p className="mt-2 text-xs text-slate-500">Manager note: {request.managerNote}</p>}
+                </td>
+                <td className="px-5 py-4">
+                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${request.status === "approved" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : request.status === "rejected" ? "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300" : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"}`}>
+                    {request.status}
+                  </span>
+                </td>
+                <td className="px-5 py-4">
+                  {currentUser.role === "manager" && request.status === "pending" ? (
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => handleLeaveDecision(request, "approved")} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-100 hover:shadow-md hover:shadow-emerald-500/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:translate-y-0 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900 dark:hover:shadow-emerald-400/25">Approve</button>
+                      <button type="button" onClick={() => handleLeaveDecision(request, "rejected")} className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition-all duration-150 hover:-translate-y-0.5 hover:bg-rose-100 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 active:translate-y-0 dark:bg-rose-950 dark:text-rose-300 dark:hover:bg-rose-900">Reject</button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500">
+                      {request.decisionBy?.name ? `Reviewed by ${request.decisionBy.name}` : request.status === "pending" ? "Awaiting review" : "Decision recorded"}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  function renderLeaveManagement() {
+    return (
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <Panel className="p-5 sm:p-6">
+          <SectionHeading title="Request leave" subtitle="Submit your requested dates for manager review." />
+          <form onSubmit={handleSubmitLeave} className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Start date</label>
+              <input required type="date" value={leaveForm.startDate} onChange={(event) => setLeaveForm({ ...leaveForm, startDate: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">End date</label>
+              <input required type="date" min={leaveForm.startDate || undefined} value={leaveForm.endDate} onChange={(event) => setLeaveForm({ ...leaveForm, endDate: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Reason</label>
+              <textarea required minLength={5} maxLength={500} rows={4} value={leaveForm.reason} onChange={(event) => setLeaveForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Briefly explain your request" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
+              <p className="mt-1 text-xs text-slate-500">5–500 characters.</p>
+            </div>
+            <button type="submit" disabled={savingLeave} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60">
+              {savingLeave ? <LoaderCircle size={17} className="animate-spin" /> : <Plus size={17} />}
+              {savingLeave ? "Submitting..." : "Submit leave request"}
+            </button>
+          </form>
+        </Panel>
+        <Panel className="overflow-hidden">
+          <div className="flex items-center justify-between gap-3 p-5 sm:px-6">
+            <div>
+              <h2 className="font-bold text-slate-900 dark:text-slate-100">{currentUser.role === "manager" ? "All leave requests" : "My leave requests"}</h2>
+              <p className="mt-1 text-sm text-slate-500">{leaveRequests.length} request(s)</p>
+            </div>
+            <div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300"><ClipboardList size={19} /></div>
+          </div>
+          <div className="border-t border-slate-100 dark:border-slate-800">{renderLeaveTable()}</div>
+        </Panel>
+      </div>
+    );
+  }
+
+  if (authChecking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-200">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <LoaderCircle className="animate-spin" size={20} /> Checking your session...
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <div className="absolute right-6 top-6">
+          <button type="button" onClick={() => setIsDarkMode((current) => !current)} aria-label={isDarkMode ? "Switch to light theme" : "Switch to dark theme"} className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+        </div>
+        <div className="pointer-events-none absolute -left-28 -top-28 h-80 w-80 rounded-full bg-indigo-200/40 blur-3xl dark:bg-indigo-700/10" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-violet-200/40 blur-3xl dark:bg-violet-700/10" />
+        <section className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white p-7 shadow-xl dark:border-slate-800 dark:bg-slate-900 sm:p-9">
+          <div className="mb-7 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-950/20"><CalendarDays size={24} /></div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">ShiftBalance</h1>
+              <p className="mt-0.5 text-xs tracking-wide text-slate-500">WORKFORCE MANAGEMENT</p>
+            </div>
+          </div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">Sign in with your employee or manager account.</p>
+          </div>
+          {authError && <div role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{authError}</div>}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Email address</label>
+              <input type="email" autoComplete="username" required value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} placeholder="you@company.com" className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-950" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Password</label>
+              <input type="password" autoComplete="current-password" required value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder="Enter your password" className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-950" />
+            </div>
+            <button type="submit" disabled={authLoading} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
+              {authLoading ? <LoaderCircle size={17} className="animate-spin" /> : <LockKeyhole size={17} />}
+              {authLoading ? "Signing in..." : "Sign in"}
+            </button>
+          </form>
+          <p className="mt-6 text-center text-xs leading-5 text-slate-500">Accounts are provisioned by a trusted project administrator. Contact your manager if you don't have login credentials.</p>
+        </section>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100">
       {mobileMenuOpen && (
         <button
           aria-label="Close navigation"
@@ -714,7 +1007,7 @@ function App() {
         <div className="px-4 pt-7">
           <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</p>
           <nav className="space-y-1">
-            {navItems.map(({ id, label, icon: Icon }) => (
+            {visibleNavItems.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => navigateTo(id)}
@@ -735,11 +1028,14 @@ function App() {
             <p className="mt-1.5 text-xs leading-5 text-slate-400">Build a balanced workforce, one shift at a time.</p>
           </div>
           <div className="mt-5 flex items-center gap-3 px-2 py-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-400/20 text-sm font-bold text-indigo-200">DK</div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">Workspace Admin</p>
-              <p className="text-xs text-slate-500">Local development</p>
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-400/20 text-sm font-bold text-indigo-200" aria-label={`${currentUser.name} initials`}>{getInitials(currentUser.name)}</div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{currentUser.name}</p>
+              <p className="text-xs capitalize text-slate-500">{currentUser.role}</p>
             </div>
+            <button type="button" onClick={handleLogout} aria-label="Sign out" title="Sign out" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white">
+              <LogOut size={17} />
+            </button>
           </div>
         </div>
       </aside>
@@ -782,10 +1078,16 @@ function App() {
             >
               {isDarkMode ? <Sun size={17} /> : <Moon size={17} />}
             </button>
-            <button onClick={loadData} aria-label="Refresh data" title="Refresh data" className="rounded-xl border border-slate-200 p-2.5 text-slate-600 transition hover:bg-slate-50">
+            <button type="button" onClick={() => loadData()} disabled={loading} aria-label="Refresh data" title={loading ? "Refreshing data…" : "Refresh data"} className="rounded-xl border border-slate-200 p-2.5 text-slate-600 transition hover:bg-slate-50 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
               <RefreshCw size={17} className={loading ? "animate-spin" : ""} />
             </button>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-sm font-bold text-indigo-700 ring-1 ring-indigo-100">DK</div>
+            <div className="hidden min-w-0 text-right sm:block">
+              <p className="max-w-32 truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{currentUser.name}</p>
+              <p className="text-[10px] capitalize text-slate-500">{currentUser.role}</p>
+            </div>
+            <button type="button" onClick={handleLogout} aria-label="Sign out" title="Sign out" className="rounded-xl border border-slate-200 p-2.5 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+              <LogOut size={17} />
+            </button>
           </div>
         </header>
 
@@ -858,8 +1160,9 @@ function App() {
                   <h2 className="text-2xl font-bold leading-tight tracking-tight sm:text-3xl">Plan better shifts.<br className="hidden sm:block" /> Build a happier team.</h2>
                   <p className="mt-3 max-w-xl text-sm leading-6 text-indigo-100 sm:text-base">Keep employee records organized and availability visible before building your weekly roster.</p>
                   <div className="mt-6 flex flex-wrap gap-3">
-                    <button onClick={() => navigateTo("employees")} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50"><Plus size={17} />Add employee</button>
-                    <button onClick={() => navigateTo("availability")} className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20">Manage availability<ArrowUpRight size={16} /></button>
+                    {currentUser.role === "manager" && <button onClick={() => navigateTo("employees")} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50"><Plus size={17} />Add employee</button>}
+                    <button onClick={() => navigateTo("availability")} className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20">{currentUser.role === "manager" ? "Manage availability" : "My availability"}<ArrowUpRight size={16} /></button>
+                    <button onClick={() => navigateTo("leave")} className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20">Leave requests<ArrowUpRight size={16} /></button>
                   </div>
                 </div>
                 <div className="pointer-events-none absolute -right-12 -top-24 h-80 w-80 rounded-full border border-white/10" />
@@ -876,7 +1179,7 @@ function App() {
               </div>
 
               <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
-                <Panel className="overflow-hidden">
+                {currentUser.role === "manager" && <Panel className="overflow-hidden">
                   <div className="flex items-center justify-between gap-3 p-5 sm:px-6">
                     <div><h2 className="font-bold tracking-tight">Employee directory</h2><p className="mt-1 text-sm text-slate-500">Your workforce at a glance</p></div>
                     <button onClick={() => navigateTo("employees")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50">View all <ArrowUpRight size={15} /></button>
@@ -894,7 +1197,7 @@ function App() {
                       </div>
                     )}
                   </div>
-                </Panel>
+                </Panel>}
 
                 <Panel className="overflow-hidden">
                   <div className="flex items-center justify-between gap-3 p-5 sm:px-6">
@@ -923,7 +1226,7 @@ function App() {
                   {[
                     { icon: CalendarDays, title: "Weekly shift roster", description: "Assign employees to shifts based on availability." },
                     { icon: AlertTriangle, title: "Conflict detection", description: "Flag overlapping shifts and unsuitable assignments." },
-                    { icon: UserRound, title: "Authentication", description: "Add secure login and role-specific permissions." },
+                    { icon: ClipboardList, title: "Leave management", description: "Track leave requests and manager decisions." },
                   ].map(({ icon: Icon, title, description }) => (
                     <div key={title} className="rounded-xl border border-slate-200 p-4">
                       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><Icon size={19} /></div>
@@ -939,31 +1242,33 @@ function App() {
 
           {activePage === "employees" && (
             <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-              <EmployeeForm />
+              {renderEmployeeForm()}
               <Panel className="overflow-hidden">
                 <div className="flex items-center justify-between gap-3 p-5 sm:px-6">
                   <div><h2 className="font-bold">All employees</h2><p className="mt-1 text-sm text-slate-500">{employees.length} employee record(s)</p></div>
                   <div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600"><Users size={19} /></div>
                 </div>
-                <div className="border-t border-slate-100"><EmployeeTable /></div>
+                <div className="border-t border-slate-100">{renderEmployeeTable()}</div>
               </Panel>
             </div>
           )}
 
           {activePage === "availability" && (
             <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-              <AvailabilityForm />
+              {renderAvailabilityForm()}
               <Panel className="overflow-hidden">
                 <div className="flex items-center justify-between gap-3 p-5 sm:px-6">
                   <div><h2 className="font-bold">Availability records</h2><p className="mt-1 text-sm text-slate-500">{availability.length} submitted slot(s)</p></div>
                   <div className="rounded-xl bg-emerald-50 p-2.5 text-emerald-600"><CalendarCheck size={19} /></div>
                 </div>
-                <div className="border-t border-slate-100"><AvailabilityTable /></div>
+                <div className="border-t border-slate-100">{renderAvailabilityTable()}</div>
               </Panel>
             </div>
           )}
 
-          {(activePage === "schedule" || activePage === "conflicts") && (
+          {activePage === "leave" && renderLeaveManagement()}
+
+          {(activePage === "schedule" || activePage === "conflicts") && currentUser.role === "manager" && (
             <Panel className="mx-auto max-w-3xl p-8 text-center sm:p-12">
               <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">{activePage === "schedule" ? <CalendarDays size={27} /> : <AlertTriangle size={27} />}</div>
               <h2 className="text-xl font-bold text-slate-900">{activePage === "schedule" ? "Weekly shift scheduling" : "Scheduling conflict detection"}</h2>

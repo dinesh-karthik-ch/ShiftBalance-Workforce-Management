@@ -1,19 +1,23 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "shiftbalance-backend",
+  "version": "1.1.0",
+  "description": "ShiftBalance workforce management API",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "set-password": "node scripts/setEmployeePassword.js",
+    "test:api": "node tests/api.test.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["shiftbalance", "workforce", "express", "mongodb"],
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.6",
     "dotenv": "^18.0.7",
     "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.11.1"
   }
 }

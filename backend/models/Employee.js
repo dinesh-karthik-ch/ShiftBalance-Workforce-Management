@@ -2,11 +2,7 @@ const mongoose = require("mongoose");
 
 const employeeSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    name: { type: String, required: true, trim: true },
     email: {
       type: String,
       required: true,
@@ -19,21 +15,20 @@ const employeeSchema = new mongoose.Schema(
       enum: ["employee", "manager"],
       default: "employee",
     },
-    department: {
-      type: String,
-      trim: true,
-      default: "General",
-    },
-    // Keep employee history instead of permanently deleting employee records.
-    // Legacy records without this field should remain active via this default.
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
+    department: { type: String, trim: true, default: "General" },
+    isActive: { type: Boolean, default: true },
+    // Password hashes are never returned by default in normal API queries.
+    passwordHash: { type: String, select: false },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
+
+employeeSchema.set("toJSON", {
+  transform(_document, returnedObject) {
+    delete returnedObject.passwordHash;
+    delete returnedObject.__v;
+    return returnedObject;
+  },
+});
 
 module.exports = mongoose.model("Employee", employeeSchema);
