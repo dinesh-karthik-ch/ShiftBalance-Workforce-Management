@@ -199,3 +199,37 @@ html.dark tbody.divide-y.divide-slate-100 > tr + tr {
 html.dark .divide-y.divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
   border-color: #293548 !important;
 }
+
+
+/* ShiftBalance utilitarian design system: restrained borders, readable controls,
+   one forest-green action color, and visible keyboard focus. */
+:root {
+  --sb-canvas: #f7f8f6;
+  --sb-surface: #ffffff;
+  --sb-border: #e4e8e3;
+  --sb-text: #242a26;
+  --sb-muted: #68716b;
+  --sb-accent: #315c47;
+}
+button, input, select, textarea {
+  font: inherit;
+}
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--sb-accent);
+  outline-offset: 2px;
+}
+::selection {
+  background: #dce9df;
+  color: #1d3527;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

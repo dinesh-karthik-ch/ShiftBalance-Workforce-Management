@@ -7,9 +7,14 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "set-password": "node scripts/setEmployeePassword.js",
-    "test:api": "node tests/api.test.js"
+    "test:api": "node --test tests/*.test.js"
   },
-  "keywords": ["shiftbalance", "workforce", "express", "mongodb"],
+  "keywords": [
+    "shiftbalance",
+    "workforce",
+    "express",
+    "mongodb"
+  ],
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
