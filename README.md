@@ -293,11 +293,7 @@ After deploying changes, test the live site end-to-end. If the frontend cannot c
 
 ## Team
 
-Developed as a Software Engineering team project by:
-
-- **CH. Dinesh Karthik**
-- **D. Rahul Nandhan**
-- **K. Shivanshu**
+Developed as a Software Engineering team project
 
 ## License
 
