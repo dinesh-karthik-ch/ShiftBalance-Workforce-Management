@@ -188,6 +188,8 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [authMode, setAuthMode] = useState("login");
+  const [registerForm, setRegisterForm] = useState({ name: "", email: "", password: "" });
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
 
@@ -320,6 +322,25 @@ function App() {
     document.documentElement.style.colorScheme = isDarkMode ? "dark" : "light";
     localStorage.setItem("shiftbalance-theme", isDarkMode ? "dark" : "light");
   }, [isDarkMode]);
+
+  async function handleRegister(event) {
+    event.preventDefault();
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      const result = await apiRequest("/auth/register", { method: "POST", body: JSON.stringify(registerForm) });
+      localStorage.setItem("shiftbalance-token", result.token);
+      setCurrentUser(result.user);
+      setActivePage("overview");
+      setRegisterForm({ name: "", email: "", password: "" });
+      await loadData(result.user);
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setAuthLoading(false);
+      setAuthChecking(false);
+    }
+  }
 
   async function handleLogin(event) {
     event.preventDefault();
@@ -1563,25 +1584,33 @@ function App() {
             </div>
           </div>
           <div className="mb-6">
-            <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">Sign in with your employee or manager account.</p>
+            <h2 className="text-2xl font-bold tracking-tight">{authMode === "login" ? "Welcome back" : "Create your account"}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">{authMode === "login" ? "Sign in to your ShiftBalance account." : "Join ShiftBalance to view and manage your work schedule."}</p>
           </div>
           {authError && <div role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{authError}</div>}
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={authMode === "login" ? handleLogin : handleRegister} className="space-y-4">
+            {authMode === "register" && <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Full name</label>
+              <input type="text" autoComplete="name" minLength={2} maxLength={100} required value={registerForm.name} onChange={(event) => setRegisterForm({ ...registerForm, name: event.target.value })} placeholder="Your full name" className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950" />
+            </div>}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Email address</label>
-              <input type="email" autoComplete="username" required value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} placeholder="you@company.com" className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950" />
+              <input type="email" autoComplete="email" required value={authMode === "login" ? loginForm.email : registerForm.email} onChange={(event) => authMode === "login" ? setLoginForm({ ...loginForm, email: event.target.value }) : setRegisterForm({ ...registerForm, email: event.target.value })} placeholder="you@company.com" className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950" />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Password</label>
-              <input type="password" autoComplete="current-password" required value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder="Enter your password" className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950" />
+              <input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} minLength={authMode === "register" ? 8 : undefined} maxLength={128} required value={authMode === "login" ? loginForm.password : registerForm.password} onChange={(event) => authMode === "login" ? setLoginForm({ ...loginForm, password: event.target.value }) : setRegisterForm({ ...registerForm, password: event.target.value })} placeholder={authMode === "login" ? "Enter your password" : "At least 8 characters"} className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950" />
             </div>
             <button type="submit" disabled={authLoading} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#4f46e5] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#4338ca] disabled:cursor-not-allowed disabled:opacity-60">
               {authLoading ? <LoaderCircle size={17} className="animate-spin" /> : <LockKeyhole size={17} />}
-              {authLoading ? "Signing in..." : "Sign in"}
+              {authLoading ? (authMode === "login" ? "Signing in..." : "Creating account...") : (authMode === "login" ? "Sign in" : "Create account")}
             </button>
           </form>
-          <p className="mt-6 text-center text-xs leading-5 text-slate-500">Accounts are provisioned by a trusted project administrator. Contact your manager if you don't have login credentials.</p>
+          <p className="mt-5 text-center text-sm text-slate-500">
+            {authMode === "login" ? "New to ShiftBalance? " : "Already have an account? "}
+            <button type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }} className="font-semibold text-[#4f46e5] hover:underline">{authMode === "login" ? "Create an account" : "Sign in instead"}</button>
+          </p>
+          {authMode === "register" && <p className="mt-3 text-center text-xs leading-5 text-slate-500">New registrations are employee accounts. Manager access can only be granted by an existing manager.</p>}
         </section>
       </div>
     );
@@ -1598,18 +1627,18 @@ function App() {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-800 bg-slate-950 text-white transition-transform duration-200 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-200 ${isDarkMode ? "border-slate-800 bg-slate-950 text-white" : "border-emerald-100 bg-[#e8f0e9] text-[#23382b] shadow-xl shadow-emerald-950/5"} ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
       >
-        <div className="flex h-[76px] items-center gap-3 border-b border-white/10 px-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500 shadow-lg shadow-indigo-950/40">
-            <CalendarDays size={22} />
+        <div className={`flex h-[76px] items-center gap-3 border-b px-6 ${isDarkMode ? "border-white/10" : "border-emerald-200/80"}`}>
+          <div className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-md ${isDarkMode ? "bg-indigo-500 text-white shadow-indigo-950/30" : "bg-[#315c47] text-white shadow-emerald-950/15"}`} aria-label="ShiftBalance logo">
+            <CalendarDays size={22} strokeWidth={2.2} />
           </div>
           <div>
             <p className="text-lg font-bold tracking-tight">ShiftBalance</p>
-            <p className="text-[11px] tracking-wide text-slate-400">WORKFORCE MANAGEMENT</p>
+            <p className={`text-[11px] tracking-wide ${isDarkMode ? "text-slate-400" : "text-emerald-800/65"}`}>WORKFORCE MANAGEMENT</p>
           </div>
           <button
-            className="ml-auto rounded-lg p-1.5 text-slate-400 hover:bg-white/10 lg:hidden"
+            className={`ml-auto rounded-lg p-1.5 lg:hidden ${isDarkMode ? "text-slate-400 hover:bg-white/10" : "text-emerald-800/70 hover:bg-emerald-900/10"}`}
             onClick={() => setMobileMenuOpen(false)}
             aria-label="Close menu"
           >
@@ -1617,14 +1646,14 @@ function App() {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-7 pb-4">
-          <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</p>
+        <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-7 pb-4">
+          <p className={`mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] ${isDarkMode ? "text-slate-500" : "text-emerald-800/60"}`}>Workspace</p>
           <nav className="space-y-1">
             {visibleNavItems.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => navigateTo(id)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${activePage === id ? "bg-indigo-500 text-white shadow-lg shadow-indigo-950/30" : "text-slate-400 hover:bg-white/5 hover:text-white"}`}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${activePage === id ? (isDarkMode ? "bg-indigo-500 text-white shadow-lg shadow-indigo-950/30" : "bg-[#315c47] text-white shadow-md shadow-emerald-900/15") : (isDarkMode ? "text-slate-400 hover:bg-white/5 hover:text-white" : "text-[#526b5a] hover:bg-white/70 hover:text-[#203b2b]")}`}
               >
                 <Icon size={19} />
                 <span>{label}</span>
@@ -1636,18 +1665,18 @@ function App() {
         </div>
 
         <div className="mt-auto p-4">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300"><Sparkles size={18} /></div>
-            <p className="text-sm font-semibold text-white">Smarter scheduling</p>
-            <p className="mt-1.5 text-xs leading-5 text-slate-400">Build a balanced workforce, one shift at a time.</p>
+          <div className={`rounded-2xl border p-4 ${isDarkMode ? "border-white/10 bg-white/[0.04]" : "border-emerald-200 bg-white/65"}`}>
+            <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${isDarkMode ? "bg-amber-400/10 text-amber-300" : "bg-amber-100 text-amber-700"}`}><Sparkles size={18} /></div>
+            <p className={`text-sm font-semibold ${isDarkMode ? "text-white" : "text-[#23382b]"}`}>Smarter scheduling</p>
+            <p className={`mt-1.5 text-xs leading-5 ${isDarkMode ? "text-slate-400" : "text-[#607566]"}`}>Build a balanced workforce, one shift at a time.</p>
           </div>
           <div className="mt-5 flex items-center gap-3 px-2 py-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/20 text-sm font-bold text-emerald-200" aria-label={`${currentUser.name} initials`}>{getInitials(currentUser.name)}</div>
+            <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${isDarkMode ? "bg-emerald-400/20 text-emerald-200" : "bg-emerald-200 text-emerald-900"}`} aria-label={`${currentUser.name} initials`}>{getInitials(currentUser.name)}</div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{currentUser.name}</p>
-              <p className="text-xs capitalize text-slate-500">{currentUser.role}</p>
+              <p className={`truncate text-sm font-semibold ${isDarkMode ? "text-white" : "text-[#23382b]"}`}>{currentUser.name}</p>
+              <p className={`text-xs capitalize ${isDarkMode ? "text-slate-500" : "text-[#607566]"}`}>{currentUser.role}</p>
             </div>
-            <button type="button" onClick={handleLogout} aria-label="Sign out" title="Sign out" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white">
+            <button type="button" onClick={handleLogout} aria-label="Sign out" title="Sign out" className={`rounded-lg p-2 ${isDarkMode ? "text-slate-400 hover:bg-white/10 hover:text-white" : "text-[#526b5a] hover:bg-white/70 hover:text-[#203b2b]"}`}>
               <LogOut size={17} />
             </button>
           </div>
@@ -1705,7 +1734,7 @@ function App() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-[1500px] p-4 sm:p-7 lg:p-9">
+        <main className="mx-auto w-full max-w-[1500px] p-3 sm:p-5 md:p-7 lg:p-9">
           <div className="mb-6"><p className="text-sm leading-6 text-slate-500">{pageInfo.description}</p></div>
 
           {message && (
@@ -1768,21 +1797,21 @@ function App() {
 
           {activePage === "overview" && (
             <>
-              <section className="relative mb-7 overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-600 p-6 text-white shadow-xl shadow-indigo-900/10 sm:p-9">
+              <section className={`hero-banner relative mb-7 overflow-hidden rounded-3xl p-6 sm:p-9 ${isDarkMode ? "hero-banner-dark text-white" : "hero-banner-light text-[#203b2d]"}`}>
                 <div className="relative z-10 max-w-2xl">
-                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-indigo-50"><Sparkles size={14} />Your workforce, in balance</div>
+                  <div className={`mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${isDarkMode ? "border-white/20 bg-white/10 text-indigo-50" : "border-[#b9d2c0] bg-white/75 text-[#315c47]"}`}><Sparkles size={14} />Your workforce, in balance</div>
                   <h2 className="text-2xl font-bold leading-tight tracking-tight sm:text-3xl">Plan better shifts.<br className="hidden sm:block" /> Build a happier team.</h2>
-                  <p className="mt-3 max-w-xl text-sm leading-6 text-indigo-100 sm:text-base">Keep employee records organized and availability visible before building your weekly roster.</p>
+                  <p className={`mt-3 max-w-xl text-sm leading-6 sm:text-base ${isDarkMode ? "text-indigo-100" : "text-[#587263]"}`}>Keep employee records organized and availability visible before building your weekly roster.</p>
                   <div className="mt-6 flex flex-wrap gap-3">
-                    {currentUser.role === "manager" && <button onClick={() => navigateTo("employees")} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50"><Plus size={17} />Add employee</button>}
-                    <button onClick={() => navigateTo("availability")} className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20">{currentUser.role === "manager" ? "Manage availability" : "My availability"}<ArrowUpRight size={16} /></button>
-                    <button onClick={() => navigateTo("leave")} className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20">Leave requests<ArrowUpRight size={16} /></button>
+                    {currentUser.role === "manager" && <button onClick={() => navigateTo("employees")} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition ${isDarkMode ? "bg-white text-indigo-700 hover:bg-indigo-50" : "bg-[#315c47] text-white hover:bg-[#264b39]"}`}><Plus size={17} />Add employee</button>}
+                    <button onClick={() => navigateTo("availability")} className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${isDarkMode ? "border-white/30 bg-white/10 text-white hover:bg-white/20" : "border-[#c5d9ca] bg-white/70 text-[#315c47] hover:bg-white"}`}>{currentUser.role === "manager" ? "Manage availability" : "My availability"}<ArrowUpRight size={16} /></button>
+                    <button onClick={() => navigateTo("leave")} className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${isDarkMode ? "border-white/30 bg-white/10 text-white hover:bg-white/20" : "border-[#c5d9ca] bg-white/70 text-[#315c47] hover:bg-white"}`}>Leave requests<ArrowUpRight size={16} /></button>
                   </div>
                 </div>
-                <div className="pointer-events-none absolute -right-12 -top-24 h-80 w-80 rounded-full border border-white/10" />
-                <div className="pointer-events-none absolute -right-1 -top-12 h-64 w-64 rounded-full border border-white/10" />
-                <div className="pointer-events-none absolute -bottom-36 right-24 h-64 w-64 rounded-full bg-white/[0.06] blur-sm" />
-                <CalendarDays className="pointer-events-none absolute bottom-8 right-9 hidden text-white/[0.12] sm:block" size={150} strokeWidth={1} />
+                <div className={`pointer-events-none absolute -right-12 -top-24 h-80 w-80 rounded-full border ${isDarkMode ? "border-white/10" : "border-[#315c47]/10"}`} />
+                <div className={`pointer-events-none absolute -right-1 -top-12 h-64 w-64 rounded-full border ${isDarkMode ? "border-white/10" : "border-[#315c47]/10"}`} />
+                <div className={`pointer-events-none absolute -bottom-36 right-24 h-64 w-64 rounded-full blur-sm ${isDarkMode ? "bg-white/[0.06]" : "bg-[#315c47]/[0.06]"}`} />
+                <CalendarDays className={`pointer-events-none absolute bottom-8 right-9 hidden sm:block ${isDarkMode ? "text-white/[0.12]" : "text-[#315c47]/[0.12]"}`} size={150} strokeWidth={1} />
               </section>
 
               <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

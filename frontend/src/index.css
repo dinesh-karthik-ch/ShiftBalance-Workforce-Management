@@ -233,3 +233,107 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ShiftBalance polish: refined light surfaces, clear focus, and a slim sidebar scrollbar. */
+:root {
+  --sb-canvas: #f5f7fb;
+  --sb-surface: #ffffff;
+  --sb-border: #e6eaf2;
+  --sb-text: #172033;
+  --sb-muted: #64748b;
+  --sb-accent: #4f46e5;
+  scrollbar-gutter: stable;
+}
+
+html:not(.dark) body {
+  background: var(--sb-canvas);
+  color: var(--sb-text);
+}
+
+html:not(.dark) .bg-slate-50 { background-color: #f5f7fb; }
+html:not(.dark) .border-slate-200,
+html:not(.dark) .border-slate-200\/80 { border-color: var(--sb-border); }
+html:not(.dark) .shadow-sm { --tw-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.035), 0 4px 16px -8px rgb(15 23 42 / 0.08); }
+html:not(.dark) input,
+html:not(.dark) select,
+html:not(.dark) textarea {
+  max-width: 100%;
+  accent-color: #4f46e5;
+}
+
+/* The navigation stays dark for strong contrast in both themes. */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.42) transparent;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.sidebar-scroll::-webkit-scrollbar { width: 7px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; margin-block: 8px; }
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184 / 0.38);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgb(165 180 252 / 0.85);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Keep wide data tables usable on phones instead of squeezing every column. */
+main { min-width: 0; }
+main table { min-width: 620px; }
+main .overflow-x-auto { max-width: 100%; overscroll-behavior-x: contain; }
+button, a, input, select, textarea { touch-action: manipulation; }
+
+@media (max-width: 640px) {
+  header { padding-inline: 0.75rem !important; }
+  main { padding: 0.875rem !important; }
+  main .rounded-2xl { border-radius: 1rem; }
+  main table th, main table td { white-space: nowrap; }
+  .sidebar-scroll { padding-top: 1.25rem; }
+}
+
+@media (min-width: 641px) and (max-width: 1023px) {
+  main { padding: 1.25rem !important; }
+}
+
+/* Warm sage light theme: avoid the stark all-white dashboard. */
+:root {
+  --sb-canvas: #edf3ee;
+  --sb-surface: #f9fbf8;
+  --sb-border: #d8e4da;
+  --sb-text: #24372b;
+  --sb-muted: #607466;
+  --sb-accent: #315c47;
+}
+html:not(.dark) body { background: #edf3ee; color: #24372b; }
+html:not(.dark) .bg-white { background-color: #f9fbf8; }
+html:not(.dark) [class~="bg-white/90"] { background-color: rgb(249 251 248 / 0.92); }
+html:not(.dark) .bg-slate-50 { background-color: #f0f5f0; }
+html:not(.dark) .bg-slate-100 { background-color: #e6eee7; }
+html:not(.dark) .border-slate-200,
+html:not(.dark) .border-slate-200\/80 { border-color: #d8e4da; }
+html:not(.dark) .text-slate-900 { color: #24372b; }
+html:not(.dark) .text-slate-800 { color: #304638; }
+html:not(.dark) .text-slate-600,
+html:not(.dark) .text-slate-700 { color: #536b5a; }
+html:not(.dark) .text-slate-500 { color: #718477; }
+html:not(.dark) .sidebar-scroll { scrollbar-color: rgb(71 107 82 / 0.38) transparent; }
+html:not(.dark) .sidebar-scroll::-webkit-scrollbar-thumb { background: rgb(71 107 82 / 0.34); }
+html:not(.dark) .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: rgb(49 92 71 / 0.65); }
+
+/* Hero treatment: soft botanical light theme, retaining the existing rich dark theme. */
+.hero-banner-light {
+  background: linear-gradient(118deg, #e1eee3 0%, #edf4e9 48%, #f5f2e8 100%);
+  border: 1px solid #d0e0d2;
+  box-shadow: 0 18px 40px -28px rgb(49 92 71 / 0.35);
+}
+.hero-banner-dark {
+  background: linear-gradient(120deg, #3730a3 0%, #4f46e5 52%, #6d28d9 100%);
+  box-shadow: 0 18px 40px -28px rgb(49 46 129 / 0.55);
+}
+.hero-banner-light h2 { color: #203b2d; letter-spacing: -0.035em; }
+.hero-banner-light .hero-accent { color: #315c47; }
